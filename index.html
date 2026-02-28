@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF--8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>T.A.L.K - A Structured Communication Game</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎙️</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+    <style>
+      :root {
+        --font-display: 'Playfair Display', serif;
+        --font-sans: 'Inter', sans-serif;
+      }
+      body {
+        font-family: var(--font-sans);
+        background-color: #0d0d1a;
+        position: relative;
+        overflow: hidden;
+      }
+      .font-display {
+        font-family: var(--font-display);
+      }
+      .gradient-blob {
+        position: fixed;
+        border-radius: 50%;
+        filter: blur(150px);
+        opacity: 0.25;
+        z-index: -1;
+        pointer-events: none;
+        transition: all 2s ease-in-out;
+      }
+      .floating-letter {
+        position: fixed;
+        font-family: var(--font-display);
+        font-weight: 900;
+        font-size: 30rem;
+        color: rgba(255, 255, 255, 0.03);
+        z-index: -1;
+        pointer-events: none;
+        user-select: none;
+        transition: font-size 0.5s ease-in-out;
+      }
+      /* Mobile Optimizations */
+      @media (max-width: 768px) {
+        .floating-letter {
+          font-size: 15rem; /* Reduce size on smaller screens */
+        }
+      }
+      /* iOS Safari input zoom fix */
+      input[type="text"],
+      input[type="email"],
+      input[type="password"],
+      input[type="search"],
+      input[type="tel"],
+      input[type="url"],
+      textarea,
+      select {
+        font-size: 16px;
+      }
+      /* iOS smooth scrolling */
+      .smooth-scroll {
+        -webkit-overflow-scrolling: touch;
+      }
+      @keyframes float-1 { /* T */
+        0% { transform: translate(5vw, 90vh) rotate(-10deg); }
+        50% { transform: translate(50vw, 10vh) rotate(0deg); }
+        100% { transform: translate(95vw, 60vh) rotate(10deg); }
+      }
+      @keyframes float-2 { /* A */
+        0% { transform: translate(90vw, 80vh) rotate(15deg); }
+        50% { transform: translate(20vw, 20vh) rotate(-5deg); }
+        100% { transform: translate(80vw, 5vh) rotate(5deg); }
+      }
+      @keyframes float-3 { /* L */
+        0% { transform: translate(10vw, -10vh) rotate(5deg); }
+        50% { transform: translate(80vw, 90vh) rotate(-5deg); }
+        100% { transform: translate(20vw, 70vh) rotate(15deg); }
+      }
+      @keyframes float-4 { /* K */
+        0% { transform: translate(50vw, 110vh) rotate(-5deg); }
+        50% { transform: translate(10vw, 50vh) rotate(10deg); }
+        100% { transform: translate(60vw, -5vh) rotate(-10deg); }
+      }
+      @keyframes move-blob-1 {
+        0% { transform: translate(-20vw, 20vh) scale(1); }
+        50% { transform: translate(50vw, 80vh) scale(1.2); }
+        100% { transform: translate(-20vw, 20vh) scale(1); }
+      }
+      @keyframes move-blob-2 {
+        0% { transform: translate(80vw, 10vh) scale(1.1); }
+        50% { transform: translate(10vw, -20vh) scale(0.9); }
+        100% { transform: translate(80vw, 10vh) scale(1.1); }
+      }
+       @keyframes move-blob-3 {
+        0% { transform: translate(40vw, 90vh) scale(0.8); }
+        50% { transform: translate(90vw, 30vh) scale(1.1); }
+        100% { transform: translate(40vw, 90vh) scale(0.8); }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.27.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0"
+  }
+}
+</script>
+</head>
+  <body class="text-gray-200">
+    <div class="gradient-blob" style="width: 600px; height: 600px; background-color: #4a148c; top: -20%; left: -10%; animation: move-blob-1 35s infinite alternate;"></div>
+    <div class="gradient-blob" style="width: 500px; height: 500px; background-color: #FFD700; bottom: -20%; right: -10%; animation: move-blob-2 40s infinite alternate;"></div>
+    <div class="gradient-blob" style="width: 450px; height: 450px; background-color: #004d40; bottom: 30%; right: 40%; animation: move-blob-3 30s infinite alternate;"></div>
+    
+    <div>
+        <span class="floating-letter" style="top: 10%; left: 5%; animation: float-1 65s infinite ease-in-out alternate;">T</span>
+        <span class="floating-letter" style="top: 20%; left: 80%; animation: float-2 75s infinite ease-in-out alternate;">A</span>
+        <span class="floating-letter" style="top: 60%; left: 50%; animation: float-3 85s infinite ease-in-out alternate;">L</span>
+        <span class="floating-letter" style="top: 80%; left: 20%; animation: float-4 55s infinite ease-in-out alternate;">K</span>
+    </div>
+
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
