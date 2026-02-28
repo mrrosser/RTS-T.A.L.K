@@ -1,29 +1,32 @@
+import { createCorrelationId, logEvent } from '../utils/logger';
 
-import { GoogleGenAI } from "@google/genai";
-
-if (!process.env.API_KEY) {
-  // A check to ensure the API key is theoretically available.
-  // In a real build process, this would be populated.
-  console.warn("API_KEY environment variable not set. Gemini API calls will fail.");
-}
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export const verifyFact = async (statement: string): Promise<string> => {
-  if (!process.env.API_KEY) {
-    return "API Key not configured. Fact-checking is disabled.";
-  }
+  const correlationId = createCorrelationId();
+
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Please verify the following statement. Provide a concise confirmation or correction, and if possible, a source. Statement: "${statement}"`,
+    const response = await fetch(`${API_BASE_URL}/api/fact-check`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-correlation-id': correlationId,
+      },
+      body: JSON.stringify({ statement }),
     });
-    return response.text;
-  } catch (error) {
-    console.error("Error verifying fact with Gemini API:", error);
-    if (error instanceof Error) {
-        return `An error occurred during fact-checking: ${error.message}`;
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = typeof payload?.error === 'string' ? payload.error : 'Fact-check request failed.';
+      return message;
     }
-    return "An unknown error occurred during fact-checking.";
+
+    return typeof payload?.result === 'string' ? payload.result : 'No fact-check result returned.';
+  } catch (error) {
+    logEvent('error', 'factCheck.request.failed', {
+      correlationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return 'An unexpected error occurred during fact-checking.';
   }
 };

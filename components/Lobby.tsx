@@ -2,27 +2,29 @@ import React, { useState } from 'react';
 import { Player, PlayerRole } from '../types';
 import { ROLES } from '../constants';
 import { LobbyState } from '../services/mockApi';
+import { logEvent } from '../utils/logger';
 
 interface LobbyProps {
   lobbyState: LobbyState;
   localPlayer: Player;
   onStartGame: () => void;
-  onSelectRole: (role: PlayerRole) => void;
+  onSelectRole: (role: PlayerRole | null) => void;
   onAddBot: (role: PlayerRole) => void;
   onExit: () => void;
 }
 
 const RoleSelector: React.FC<{
-  onSelectRole: (role: PlayerRole) => void;
+  onSelectRole: (role: PlayerRole | null) => void;
   takenRoles: { referee: boolean; timeKeeper: boolean };
 }> = ({ onSelectRole, takenRoles }) => {
     return (
         <div className="mt-4 p-3 bg-black/30 rounded-lg">
             <h3 className="text-center font-bold text-gray-200 mb-2">Choose Your Role</h3>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <button onClick={() => onSelectRole('Conversationalist')} className="text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-3 rounded-md transition-colors">Conversationalist</button>
                 <button onClick={() => onSelectRole('Referee')} disabled={takenRoles.referee} className="text-sm bg-amber-600 hover:bg-amber-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-3 rounded-md transition-colors">Referee</button>
                 <button onClick={() => onSelectRole('Time Keeper')} disabled={takenRoles.timeKeeper} className="text-sm bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-3 rounded-md transition-colors">Time Keeper</button>
+                <button onClick={() => onSelectRole(null)} className="text-sm bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-3 rounded-md transition-colors">Clear</button>
             </div>
         </div>
     );
@@ -51,8 +53,15 @@ const Lobby: React.FC<LobbyProps> = ({ lobbyState, localPlayer, onStartGame, onS
 
   const canStart = players.length >= 3 && rolesFilled();
 
-  const copyCode = () => {
-    navigator.clipboard.writeText(gameCode);
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(gameCode);
+    } catch (error) {
+      logEvent('warn', 'lobby.copyCode.failed', {
+        code: gameCode,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   };
 
   const localPlayerDetails = players.find(p => p.id === localPlayer.id);

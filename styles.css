@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: 'Playfair Display', serif;
+  --font-sans: 'Inter', sans-serif;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: #0d0d1a;
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.gradient-blob {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(150px);
+  opacity: 0.25;
+  z-index: -1;
+  pointer-events: none;
+  transition: all 2s ease-in-out;
+}
+
+.floating-letter {
+  position: fixed;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 30rem;
+  color: rgba(255, 255, 255, 0.03);
+  z-index: -1;
+  pointer-events: none;
+  user-select: none;
+  transition: font-size 0.5s ease-in-out;
+}
+
+@media (max-width: 768px) {
+  .floating-letter {
+    display: none;
+  }
+  .gradient-blob {
+    filter: blur(90px);
+    opacity: 0.18;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gradient-blob,
+  .floating-letter {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+input[type='text'],
+input[type='email'],
+input[type='password'],
+input[type='search'],
+input[type='tel'],
+input[type='url'],
+textarea,
+select {
+  font-size: 16px;
+}
+
+.smooth-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+@keyframes float-1 {
+  0% { transform: translate(5vw, 90vh) rotate(-10deg); }
+  50% { transform: translate(50vw, 10vh) rotate(0deg); }
+  100% { transform: translate(95vw, 60vh) rotate(10deg); }
+}
+
+@keyframes float-2 {
+  0% { transform: translate(90vw, 80vh) rotate(15deg); }
+  50% { transform: translate(20vw, 20vh) rotate(-5deg); }
+  100% { transform: translate(80vw, 5vh) rotate(5deg); }
+}
+
+@keyframes float-3 {
+  0% { transform: translate(10vw, -10vh) rotate(5deg); }
+  50% { transform: translate(80vw, 90vh) rotate(-5deg); }
+  100% { transform: translate(20vw, 70vh) rotate(15deg); }
+}
+
+@keyframes float-4 {
+  0% { transform: translate(50vw, 110vh) rotate(-5deg); }
+  50% { transform: translate(10vw, 50vh) rotate(10deg); }
+  100% { transform: translate(60vw, -5vh) rotate(-10deg); }
+}
+
+@keyframes move-blob-1 {
+  0% { transform: translate(-20vw, 20vh) scale(1); }
+  50% { transform: translate(50vw, 80vh) scale(1.2); }
+  100% { transform: translate(-20vw, 20vh) scale(1); }
+}
+
+@keyframes move-blob-2 {
+  0% { transform: translate(80vw, 10vh) scale(1.1); }
+  50% { transform: translate(10vw, -20vh) scale(0.9); }
+  100% { transform: translate(80vw, 10vh) scale(1.1); }
+}
+
+@keyframes move-blob-3 {
+  0% { transform: translate(40vw, 90vh) scale(0.8); }
+  50% { transform: translate(90vw, 30vh) scale(1.1); }
+  100% { transform: translate(40vw, 90vh) scale(0.8); }
+}

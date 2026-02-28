@@ -33,6 +33,8 @@ const ViewerScreen: React.FC<ViewerScreenProps> = ({ lobbyState, localViewer, on
                     question={gameState.activeQuestion} 
                     round={gameState.currentRound}
                     totalRounds={gameState.gameSettings.totalRounds}
+                    moderationNotes={gameState.moderationNotes}
+                    winner={gameState.winner}
                 />
                 <TimelinePanel 
                     gameCode={gameCode}
@@ -40,6 +42,8 @@ const ViewerScreen: React.FC<ViewerScreenProps> = ({ lobbyState, localViewer, on
                     players={players}
                     isViewer={true}
                     localUserId={localViewer.id}
+                    timelineHighlights={gameState.timelineHighlights}
+                    timelineSections={gameState.timelineSections}
                 />
             </div>
             <div className="flex flex-col gap-6">

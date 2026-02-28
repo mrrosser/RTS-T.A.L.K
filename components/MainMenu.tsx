@@ -45,7 +45,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ playerName, onShowSetup, onShowLobb
               type="text"
               value={gameCode}
               onChange={(e) => setGameCode(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleAction()}
+              onKeyDown={(e) => e.key === 'Enter' && handleAction()}
               placeholder="ABCXYZ"
               maxLength={6}
               autoCapitalize="characters"

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getPublicLobbies, LobbyState } from '../services/mockApi';
 import { PlayerRole } from '../types';
+import { logEvent } from '../utils/logger';
 
 interface LobbyBrowserProps {
   onJoinLobby: (code: string) => void;
@@ -79,8 +80,10 @@ const LobbyBrowser: React.FC<LobbyBrowserProps> = ({ onJoinLobby, onWatchLobby, 
       try {
         const publicLobbies = await getPublicLobbies();
         setLobbies(publicLobbies);
-      } catch (error) {
-        console.error("Failed to fetch public lobbies:", error);
+      } catch (fetchError) {
+        logEvent('error', 'lobbyBrowser.fetch.failed', {
+          error: fetchError instanceof Error ? fetchError.message : String(fetchError),
+        });
       } finally {
         setIsLoading(false);
       }

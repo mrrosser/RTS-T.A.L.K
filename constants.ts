@@ -15,4 +15,11 @@ export const initialGameState: Omit<GameState, 'players' | 'gameSettings'> = {
   chatMessages: [],
   turnStartTime: null,
   isTimerRunning: false,
+  turnRemainingSeconds: null,
+  timelineSections: [],
+  timelineHighlights: [],
+  moderationNotes: [],
+  audioDrafts: [],
+  winner: null,
+  activeSection: null,
 };

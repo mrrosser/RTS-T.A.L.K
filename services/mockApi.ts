@@ -1,268 +1,266 @@
-// This service simulates a backend server for managing game lobbies.
-// It uses localStorage to persist data across browser tabs and sessions.
+import type {
+  ChatMessage,
+  LifelineType,
+  LobbyState,
+  Player,
+  PlayerRole,
+  TimelineEvent,
+  Viewer,
+  GameSettings,
+} from '../types';
+import { createCorrelationId, logEvent } from '../utils/logger';
 
-import { GameSettings, Player, PlayerRole, Viewer, GameState, TimelineEvent, ChatMessage } from '../types';
-import { initialGameState } from '../constants';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
-const LOBBIES_KEY = 'TALK_GAME_LOBBIES';
+let requestPlayerId: string | null = null;
 
-export interface LobbyState {
-  code: string;
-  settings: GameSettings;
-  players: Player[];
-  viewers: Viewer[];
-  gameState: GameState;
-  gameStarted: boolean;
-  createdAt: number;
-}
+export const setRequestPlayerId = (playerId: string | null) => {
+  requestPlayerId = playerId;
+};
 
-// --- Helper Functions ---
-
-const getLobbiesFromStorage = (): Map<string, LobbyState> => {
-  try {
-    const lobbiesJson = localStorage.getItem(LOBBIES_KEY);
-    if (!lobbiesJson) return new Map();
-    // Reviver function to correctly parse Map objects
-    return new Map(JSON.parse(lobbiesJson));
-  } catch (error) {
-    console.error("Failed to parse lobbies from localStorage", error);
-    return new Map();
+const createIdempotencyKey = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
   }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
-const saveLobbiesToStorage = (lobbies: Map<string, LobbyState>) => {
-  const lobbiesArray = Array.from(lobbies.entries());
-  localStorage.setItem(LOBBIES_KEY, JSON.stringify(lobbiesArray));
-};
+const request = async <T>(path: string, init: RequestInit = {}, idempotent = false): Promise<T> => {
+  const correlationId = createCorrelationId();
+  const headers = new Headers(init.headers);
+  if (!headers.has('Content-Type') && init.body) headers.set('Content-Type', 'application/json');
+  headers.set('x-correlation-id', correlationId);
+  if (requestPlayerId) headers.set('x-player-id', requestPlayerId);
+  if (idempotent) headers.set('x-idempotency-key', createIdempotencyKey());
 
-const generateCode = () => {
-    const lobbies = getLobbiesFromStorage();
-    let code = '';
-    do {
-        code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    } while (lobbies.has(code));
-    return code;
-}
-
-const cleanupOldLobbies = () => {
-    const lobbies = getLobbiesFromStorage();
-    const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
-    let changed = false;
-    for (const [code, lobby] of lobbies.entries()) {
-        if (lobby.createdAt < twoHoursAgo) {
-            lobbies.delete(code);
-            changed = true;
-        }
-    }
-    if (changed) {
-        saveLobbiesToStorage(lobbies);
-    }
-}
-cleanupOldLobbies();
-
-
-// --- API Functions ---
-
-export const createLobby = (settings: GameSettings, host: Player): Promise<LobbyState> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const lobbies = getLobbiesFromStorage();
-      const code = generateCode();
-      const newLobby: LobbyState = {
-        code,
-        settings,
-        players: [host],
-        viewers: [],
-        gameState: {
-            ...initialGameState,
-            players: [host],
-            viewers: [],
-            gameSettings: settings,
-            activeTopic: settings.topic,
-            timeline: [
-              { id: `event-${Date.now()}`, type: 'Topic', text: `The topic is: ${settings.topic}`, playerId: 'system', timestamp: Date.now() }
-            ]
-        },
-        gameStarted: false,
-        createdAt: Date.now(),
-      };
-      lobbies.set(code, newLobby);
-      saveLobbiesToStorage(lobbies);
-      resolve(newLobby);
-    }, 500);
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers,
   });
+
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const payload = await response.json();
+      if (payload?.error) {
+        message = payload.error;
+      }
+    } catch {
+      logEvent('warn', 'api.request.error_payload.parse_failed', {
+        correlationId,
+        path,
+      });
+    }
+    throw new Error(message);
+  }
+
+  return response.json() as Promise<T>;
 };
 
-export const joinLobby = (code: string, player: Player): Promise<LobbyState> => {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      const lobbies = getLobbiesFromStorage();
-      const lobby = lobbies.get(code);
-      if (!lobby) return reject(new Error('Game not found.'));
-      if (lobby.gameStarted) return reject(new Error('This game has already started.'));
-      if (lobby.players.length >= 5) return reject(new Error('This lobby is already full.'));
-      if (lobby.players.some(p => p.id === player.id)) return resolve(lobby); // Already in
-      
-      lobby.players.push(player);
-      lobby.gameState.players = lobby.players;
-      saveLobbiesToStorage(lobbies);
-      resolve(lobby);
-    }, 500);
+export type { LobbyState };
+
+export const createLobby = (settings: GameSettings, host: Player): Promise<LobbyState> =>
+  request<LobbyState>(
+    '/api/lobbies',
+    {
+      method: 'POST',
+      body: JSON.stringify({ settings, host }),
+    },
+    true,
+  );
+
+export const joinLobby = (code: string, player: Player): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/join-player`, {
+    method: 'POST',
+    body: JSON.stringify({ player }),
   });
-};
 
-export const joinAsViewer = (code: string, viewer: Viewer): Promise<LobbyState> => {
-    return new Promise((resolve, reject) => {
-        setTimeout(() => {
-            const lobbies = getLobbiesFromStorage();
-            const lobby = lobbies.get(code);
-            if (!lobby) return reject(new Error('Game not found.'));
-            if (!lobby.viewers.some(v => v.id === viewer.id)) {
-                lobby.viewers.push(viewer);
-                lobby.gameState.viewers = lobby.viewers;
-                saveLobbiesToStorage(lobbies);
-            }
-            resolve(lobby);
-        }, 500);
+export const joinAsViewer = (code: string, viewer: Viewer): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/join-viewer`, {
+    method: 'POST',
+    body: JSON.stringify({ viewer }),
+  });
+
+export const getPublicLobbies = (): Promise<LobbyState[]> => request<LobbyState[]>('/api/lobbies/public');
+
+export const getLobbyState = (code: string): Promise<LobbyState | null> =>
+  request<LobbyState>(`/api/lobbies/${code}`)
+    .then((lobby) => lobby)
+    .catch((error) => {
+      if (error instanceof Error && error.message === 'Game not found.') {
+        return null;
+      }
+      throw error;
     });
-};
 
-export const getPublicLobbies = (): Promise<LobbyState[]> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            cleanupOldLobbies();
-            const lobbies = getLobbiesFromStorage();
-            const publicLobbies = Array.from(lobbies.values()).filter(l => l.settings.isPublic && !l.gameStarted);
-            resolve(publicLobbies);
-        }, 300);
-    });
-};
+export const startGame = (code: string): Promise<LobbyState> => request<LobbyState>(`/api/lobbies/${code}/start`, { method: 'POST' });
 
-export const getLobbyState = (code: string): Promise<LobbyState | null> => {
-   return new Promise((resolve) => {
-     const lobbies = getLobbiesFromStorage();
-     const lobby = lobbies.get(code);
-     resolve(lobby || null);
-   });
-};
+export const addBotToLobby = (code: string, role: PlayerRole): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/bot`, {
+    method: 'POST',
+    body: JSON.stringify({ role }),
+  });
 
-// --- In-Game Actions ---
+export const setPlayerRoleInLobby = (code: string, playerId: string, role: PlayerRole | null): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/role`, {
+    method: 'POST',
+    body: JSON.stringify({ playerId, role }),
+  });
 
-const updateLobby = (code: string, updateFn: (lobby: LobbyState) => void): Promise<LobbyState> => {
-    return new Promise((resolve, reject) => {
-        setTimeout(() => {
-            const lobbies = getLobbiesFromStorage();
-            const lobby = lobbies.get(code);
-            if (!lobby) return reject(new Error("Lobby not found."));
-            
-            updateFn(lobby);
+export const removePlayer = (code: string, playerId: string): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/remove-player`, {
+    method: 'POST',
+    body: JSON.stringify({ playerId }),
+  });
 
-            saveLobbiesToStorage(lobbies);
-            resolve(lobby);
-        }, 50); // Actions are faster than joins
-    });
-};
+export const addTimelineEvent = (code: string, event: Omit<TimelineEvent, 'id' | 'timestamp'>): Promise<LobbyState> =>
+  request<LobbyState>(
+    `/api/lobbies/${code}/timeline`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ event }),
+    },
+    true,
+  );
 
-export const startGame = (code: string): Promise<LobbyState> => updateLobby(code, lobby => {
-    lobby.gameStarted = true;
-    lobby.gameState.timeline.unshift({ id: `event-${Date.now()}`, type: 'RoundStart', text: `Round 1 has begun!`, playerId: 'system', timestamp: Date.now() });
-});
+export const assignViolation = (
+  code: string,
+  violation: { targetPlayerId: string; type: 'red' | 'yellow'; reason: string; assignerId: string },
+): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/violation`, {
+    method: 'POST',
+    body: JSON.stringify({ violation }),
+  });
 
-export const addBotToLobby = (code: string, role: PlayerRole): Promise<LobbyState> => updateLobby(code, lobby => {
-    if (lobby.players.length >= 5) throw new Error("Lobby is full.");
+export const sendMessage = (code: string, message: Omit<ChatMessage, 'id' | 'timestamp'>): Promise<LobbyState> =>
+  request<LobbyState>(
+    `/api/lobbies/${code}/message`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    },
+    true,
+  );
 
-    if ((role === 'Referee' && lobby.players.some(p => p.role === 'Referee')) ||
-        (role === 'Time Keeper' && lobby.players.some(p => p.role === 'Time Keeper'))) {
-        throw new Error(`The ${role} role is already taken.`);
-    }
+export const startTurn = (code: string, speakerId: string): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/turn/start`, {
+    method: 'POST',
+    body: JSON.stringify({ speakerId }),
+  });
 
-    const bot: Player = {
-        id: `player-bot-${Date.now()}`,
-        name: `Bot ${lobby.players.length + 1}`,
-        role: role,
-        violations: { red: 0, yellow: 0, green: 0 },
-    };
-    lobby.players.push(bot);
-    lobby.gameState.players = lobby.players;
-});
+export const endTurn = (code: string): Promise<LobbyState> => request<LobbyState>(`/api/lobbies/${code}/turn/end`, { method: 'POST' });
 
-export const setPlayerRoleInLobby = (code: string, playerId: string, role: PlayerRole): Promise<LobbyState> => updateLobby(code, lobby => {
-    if ((role === 'Referee' && lobby.players.some(p => p.role === 'Referee' && p.id !== playerId)) ||
-        (role === 'Time Keeper' && lobby.players.some(p => p.role === 'Time Keeper' && p.id !== playerId))) {
-        throw new Error(`The ${role} role is already taken.`);
-    }
-    
-    const player = lobby.players.find(p => p.id === playerId);
-    if (player) {
-        player.role = role;
-        lobby.gameState.players = lobby.players;
-    } else {
-        throw new Error("Player not found.");
-    }
-});
+export const pauseTurn = (code: string, pause: boolean): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/turn/pause`, {
+    method: 'POST',
+    body: JSON.stringify({ pause }),
+  });
 
-export const removePlayer = (code: string, playerId: string): Promise<LobbyState> => updateLobby(code, lobby => {
-    const playerIndex = lobby.players.findIndex(p => p.id === playerId);
-    if (playerIndex > -1) {
-        lobby.players.splice(playerIndex, 1);
-        lobby.gameState.players = lobby.players;
-    } else {
-        throw new Error("Player not found to remove.");
-    }
-});
+export const castVote = (code: string, eventId: string, viewerId: string): Promise<LobbyState> =>
+  request<LobbyState>(
+    `/api/lobbies/${code}/vote`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ eventId, viewerId }),
+    },
+    true,
+  );
 
-export const addTimelineEvent = (code: string, event: Omit<TimelineEvent, 'id' | 'timestamp'>): Promise<LobbyState> => updateLobby(code, lobby => {
-    const newEvent: TimelineEvent = { ...event, id: `event-${Date.now()}`, timestamp: Date.now() };
-    lobby.gameState.timeline.push(newEvent);
-});
+export const updateTrustedSources = (code: string, playerId: string, sources: string[]): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/trusted-sources`, {
+    method: 'POST',
+    body: JSON.stringify({ playerId, sources }),
+  });
 
-export const assignViolation = (code: string, violation: {targetPlayerId: string, type: 'red' | 'yellow', reason: string, assignerId: string}): Promise<LobbyState> => updateLobby(code, lobby => {
-    const targetPlayer = lobby.gameState.players.find(p => p.id === violation.targetPlayerId);
-    if (!targetPlayer) throw new Error("Player to violate not found");
+export const updateQuestionBank = (code: string, playerId: string, questions: string[]): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/question-bank`, {
+    method: 'POST',
+    body: JSON.stringify({ playerId, questions }),
+  });
 
-    targetPlayer.violations[violation.type]++;
-    const newEvent: TimelineEvent = {
-        id: `event-${Date.now()}`,
-        timestamp: Date.now(),
-        type: 'Violation',
-        text: `Reason: ${violation.reason}`,
-        playerId: violation.assignerId,
-        violation: { type: violation.type, targetPlayerId: violation.targetPlayerId }
-    };
-    lobby.gameState.timeline.push(newEvent);
-    lobby.players = lobby.gameState.players; // sync top-level players too
-});
+export const revealQuestionFromBank = (code: string, playerId: string, questionId: string): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/question/reveal`, {
+    method: 'POST',
+    body: JSON.stringify({ playerId, questionId }),
+  });
 
-export const sendMessage = (code: string, message: Omit<ChatMessage, 'id'|'timestamp'>): Promise<LobbyState> => updateLobby(code, lobby => {
-    const newMessage: ChatMessage = { ...message, id: `msg-${Date.now()}`, timestamp: Date.now() };
-    lobby.gameState.chatMessages.push(newMessage);
-});
+export const useLifeline = (
+  code: string,
+  payload: { playerId: string; type: LifelineType; selectedSource?: string; details?: string },
+): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/lifeline`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 
-export const startTurn = (code: string, speakerId: string): Promise<LobbyState> => updateLobby(code, lobby => {
-    lobby.gameState.isTimerRunning = true;
-    lobby.gameState.turnStartTime = Date.now();
-    lobby.gameState.speakerId = speakerId;
-});
+export const useGreenIndicator = (code: string, payload: { playerId: string; reason?: string }): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/indicator/green`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 
-export const endTurn = (code: string): Promise<LobbyState> => updateLobby(code, lobby => {
-    lobby.gameState.isTimerRunning = false;
-    lobby.gameState.turnStartTime = null;
-});
+export const addModerationNote = (
+  code: string,
+  payload: { refereeId: string; text: string; shortcutKey?: string },
+): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/moderation-note`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 
-export const pauseTurn = (code: string, pause: boolean): Promise<LobbyState> => updateLobby(code, lobby => {
-    lobby.gameState.isTimerRunning = !pause;
-    // Note: A real implementation would need to adjust startTime to account for pause duration.
-    // For this mock, we'll keep it simple.
-});
+export const highlightTimelineEvent = (
+  code: string,
+  payload: { timeKeeperId: string; eventId: string; label: string },
+): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/timeline/highlight`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 
-export const castVote = (code: string, eventId: string, viewerId: string): Promise<LobbyState> => updateLobby(code, lobby => {
-    const event = lobby.gameState.timeline.find(e => e.id === eventId);
-    if (event) {
-        if (!event.factCheckVotes) event.factCheckVotes = [];
-        if (!event.factCheckVotes.includes(viewerId)) {
-            event.factCheckVotes.push(viewerId);
-        }
-    } else {
-        throw new Error("Timeline event not found.");
-    }
-});
+export const updateTimelineSectionSummary = (
+  code: string,
+  payload: { timeKeeperId: string; sectionId: string; summary: string },
+): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/timeline/section-summary`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const awardScore = (
+  code: string,
+  payload: { playerId: string; points: number; reason: string; assignerId: string },
+): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/score/award`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const advanceRound = (code: string, timeKeeperId: string): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/round/next`, {
+    method: 'POST',
+    body: JSON.stringify({ timeKeeperId }),
+  });
+
+export const endGame = (code: string, reason?: string): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/game/end`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+
+export const submitAudioDraft = (
+  code: string,
+  payload: { playerId: string; transcript: string; audioBase64?: string },
+): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/audio-draft`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const reviewAudioDraft = (
+  code: string,
+  payload: { reviewerId: string; draftId: string; status: 'approved' | 'rejected'; reviewNote?: string },
+): Promise<LobbyState> =>
+  request<LobbyState>(`/api/lobbies/${code}/audio-draft/review`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
