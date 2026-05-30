@@ -54,4 +54,6 @@ The current client URL is served from `leadflow-review`. The `gen-lang-client-03
 
 ## Follow-Up: Dedicated GCP Project
 
-T.A.L.K currently runs under `leadflow-review` alongside other applications. Create a dedicated RTS T.A.L.K project in a separate migration so IAM, billing, secrets, Firestore, Artifact Registry, and Cloud Run ownership can be isolated without disrupting the current client URL.
+T.A.L.K currently runs under `leadflow-review` alongside other applications. A parallel dedicated-project deployment was created in `gen-lang-client-0379372331`; see `docs/audits/2026-05-30-dedicated-project-migration.md`.
+
+The existing client URL remains on `leadflow-review` until there is an intentional cutover or custom-domain move.

@@ -100,9 +100,26 @@ This repo ships as one container: Vite builds the frontend into `dist/`, and the
 - Region: `us-central1`
 - Associated Google AI Studio / Gemini project context: `gen-lang-client-0379372331` (`TALK`)
 
-The live client URL is served by the `leadflow-review` Cloud Run service. The `gen-lang-client-0379372331` project is retained as related project context, but deploying to that project would not update the current client URL unless the hosting target is intentionally moved.
+The live client URL is served by the `leadflow-review` Cloud Run service. Deploying to `gen-lang-client-0379372331` does not update this URL unless the hosting target is intentionally moved or the client is given the new dedicated-project URL.
 
-Future migration note: T.A.L.K should move into a dedicated RTS T.A.L.K GCP project when there is time to migrate IAM, Artifact Registry, Firestore data, secrets, and the client URL intentionally. Do not mix that migration into routine client updates.
+### Dedicated project deployment
+
+A parallel T.A.L.K deployment now exists in the dedicated `gen-lang-client-0379372331` project.
+
+- Canonical Cloud Run URL: `https://talk-app-z7oaignqja-uc.a.run.app/`
+- Alternate Cloud Run URL shown by deploy: `https://talk-app-36381735293.us-central1.run.app/`
+- Cloud Run project: `gen-lang-client-0379372331`
+- Cloud Run service: `talk-app`
+- Region: `us-central1`
+- Active revision: `talk-app-00001-6m7`
+- Traffic: 100%
+- Image: `us-central1-docker.pkg.dev/gen-lang-client-0379372331/talk-app/talk-app:sync-20260530`
+- Image digest: `sha256:2e6d1eadc6c6f245889c79d5e1da36a462ee86b3817b08a48350bb4f992f2281`
+- Firestore: `(default)` database, native mode, `us-central1`
+- Secret Manager: `talk-gemini-api-key`
+- Cloud Build staging bucket: `gs://gen-lang-client-0379372331_cloudbuild`
+
+No dedicated app upload bucket was created during this migration because `GCS_UPLOAD_BUCKET` is not configured on the current service. Add one only when backdrop uploads or other persisted object uploads are ready to be enabled.
 
 ### Recommended runtime shape
 
@@ -129,6 +146,36 @@ gcloud run deploy talk-app \
 ```
 
 PowerShell note: keep the `--set-env-vars=...` argument quoted or in equals form so the comma-separated values remain one gcloud argument.
+
+### Dedicated project deploy
+
+```bash
+gcloud builds submit \
+  --project gen-lang-client-0379372331 \
+  --tag us-central1-docker.pkg.dev/gen-lang-client-0379372331/talk-app/talk-app:sync-20260530
+
+gcloud run deploy talk-app \
+  --project gen-lang-client-0379372331 \
+  --image us-central1-docker.pkg.dev/gen-lang-client-0379372331/talk-app/talk-app:sync-20260530 \
+  --platform managed \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-env-vars=TALK_STORAGE_BACKEND=firestore,FIREBASE_PROJECT_ID=gen-lang-client-0379372331 \
+  --set-secrets=GEMINI_API_KEY=talk-gemini-api-key:latest
+```
+
+PowerShell-safe form:
+
+```powershell
+gcloud run deploy talk-app `
+  --project gen-lang-client-0379372331 `
+  --image us-central1-docker.pkg.dev/gen-lang-client-0379372331/talk-app/talk-app:sync-20260530 `
+  --platform managed `
+  --region us-central1 `
+  --allow-unauthenticated `
+  "--set-env-vars=TALK_STORAGE_BACKEND=firestore,FIREBASE_PROJECT_ID=gen-lang-client-0379372331" `
+  "--set-secrets=GEMINI_API_KEY=talk-gemini-api-key:latest"
+```
 
 ### Post-deploy checks
 
