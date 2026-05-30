@@ -17,6 +17,11 @@ const createPlayer = (id: string, name: string) => ({
   violations: { red: 0, yellow: 0, green: 0 },
 });
 
+const createViewer = (id: string, name: string) => ({
+  id,
+  name,
+});
+
 describe('gameplay gap closure behaviors', () => {
   it('keeps private question banks hidden from non-owner until reveal', async () => {
     const app = createApp({ serveStatic: false });
@@ -163,5 +168,69 @@ describe('gameplay gap closure behaviors', () => {
 
     const latestDraft = secondDraft.body.gameState.audioDrafts.at(-1);
     expect(latestDraft.learningHint).toBeTruthy();
+  });
+
+  it('allows audience review to overturn a referee mic mute', async () => {
+    const app = createApp({ serveStatic: false });
+    const con = createPlayer('con-1', 'Con One');
+    const ref = createPlayer('ref-1', 'Ref');
+    const viewers = [
+      createViewer('viewer-1', 'Viewer One'),
+      createViewer('viewer-2', 'Viewer Two'),
+      createViewer('viewer-3', 'Viewer Three'),
+    ];
+
+    const created = await request(app)
+      .post('/api/lobbies')
+      .set('x-idempotency-key', 'mute-review-create-1')
+      .send({ settings, host: con })
+      .expect(201);
+    const code = created.body.code as string;
+
+    await request(app).post(`/api/lobbies/${code}/join-player`).send({ player: ref }).expect(200);
+    for (const viewer of viewers) {
+      await request(app).post(`/api/lobbies/${code}/join-viewer`).send({ viewer }).expect(200);
+    }
+    await request(app).post(`/api/lobbies/${code}/role`).send({ playerId: con.id, role: 'Conversationalist' }).expect(200);
+    await request(app).post(`/api/lobbies/${code}/role`).send({ playerId: ref.id, role: 'Referee' }).expect(200);
+
+    await request(app)
+      .post(`/api/lobbies/${code}/mic-state`)
+      .send({ playerId: con.id, micLive: true })
+      .expect(200);
+
+    const muted = await request(app)
+      .post(`/api/lobbies/${code}/referee/mute`)
+      .send({ refereeId: ref.id, targetPlayerId: con.id, muted: true })
+      .expect(200);
+
+    const mutedPlayer = muted.body.gameState.players.find((player: { id: string }) => player.id === con.id);
+    const muteActionId = muted.body.gameState.refereeActions.at(-1).id as string;
+    expect(mutedPlayer.presence.mutedByReferee).toBe(true);
+    expect(mutedPlayer.presence.micLive).toBe(false);
+
+    await request(app)
+      .post(`/api/lobbies/${code}/mic-state`)
+      .send({ playerId: con.id, micLive: true })
+      .expect(400);
+
+    const challenged = await request(app)
+      .post(`/api/lobbies/${code}/audience-challenge`)
+      .send({ challengerId: con.id, actionId: muteActionId, note: 'Mute was not justified.' })
+      .expect(200);
+    const challengeId = challenged.body.gameState.audienceChallenges.at(-1).id as string;
+
+    let finalVoteResponse;
+    for (const viewer of viewers) {
+      finalVoteResponse = await request(app)
+        .post(`/api/lobbies/${code}/audience-challenge/vote`)
+        .send({ challengeId, viewerId: viewer.id, vote: 'unjust' })
+        .expect(200);
+    }
+
+    const challenge = finalVoteResponse.body.gameState.audienceChallenges.find((entry: { id: string }) => entry.id === challengeId);
+    const restoredPlayer = finalVoteResponse.body.gameState.players.find((player: { id: string }) => player.id === con.id);
+    expect(challenge.status).toBe('overturned');
+    expect(restoredPlayer.presence.mutedByReferee).toBe(false);
   });
 });

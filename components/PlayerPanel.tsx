@@ -12,12 +12,13 @@ interface PlayerPanelProps {
 const PlayerPanel: React.FC<PlayerPanelProps> = ({ players, localPlayer, currentSpeakerId, onRemovePlayer }) => {
   const isReferee = localPlayer.role === 'Referee';
   const toCount = (value: number | undefined) => (typeof value === 'number' ? value : 0);
+  const isMicLive = (player: Player) => Boolean(player.presence?.micLive);
 
   return (
     <div className="bg-black/30 backdrop-blur-lg border border-white/10 p-4 rounded-xl">
       <h2 className="text-3xl font-bold mb-4 border-b border-white/10 pb-2 font-display">Participants</h2>
       <ul className="space-y-3">
-        {players.map(player => (
+        {players.map((player) => (
           <li
             key={player.id}
             className={`p-3 rounded-lg flex items-center justify-between transition-all duration-300 group ${
@@ -26,16 +27,47 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({ players, localPlayer, current
           >
             <div className="min-w-0 pr-3">
               <p className="font-bold text-lg text-gray-100">
-                {player.name} {player.id === localPlayer.id && <span className="text-xs text-amber-400">(You)</span>}
+                {player.name}
+                {' '}
+                {player.id === localPlayer.id && <span className="text-xs text-amber-400">(You)</span>}
               </p>
               <p className="text-sm font-semibold text-purple-400">{player.role || 'Waiting for role...'}</p>
               {player.role === 'Conversationalist' && (
                 <div className="mt-1 text-xs text-gray-300">
-                  <p>Score: <strong>{toCount(player.score?.total)}</strong> | Replies: {toCount(player.score?.replies)} | Verified: {toCount(player.score?.verifiedPoints)}</p>
                   <p>
-                    Indicators left:
+                    Score:
                     {' '}
-                    R {toCount(player.indicators?.redRemaining)} / Y {toCount(player.indicators?.yellowRemaining)} / G {toCount(player.indicators?.greenRemaining)}
+                    <strong>{toCount(player.score?.total)}</strong>
+                    {' '}
+                    | Replies:
+                    {' '}
+                    {toCount(player.score?.replies)}
+                    {' '}
+                    | Verified:
+                    {' '}
+                    {toCount(player.score?.verifiedPoints)}
+                  </p>
+                  <p>
+                    Mic:
+                    {' '}
+                    {player.presence?.mutedByReferee ? 'Muted by Referee' : player.presence?.micLive ? 'Live' : 'Muted'}
+                    {' '}
+                    | Camera:
+                    {' '}
+                    {player.presence?.videoEnabled ? 'On' : 'Off'}
+                  </p>
+                  <p>
+                    Tokens left: R
+                    {' '}
+                    {toCount(player.indicators?.redRemaining)}
+                    {' '}
+                    / Y
+                    {' '}
+                    {toCount(player.indicators?.yellowRemaining)}
+                    {' '}
+                    / P
+                    {' '}
+                    {toCount(player.indicators?.purpleRemaining)}
                   </p>
                   {(player.trustedSources?.length ?? 0) > 0 && (
                     <p className="truncate">
@@ -44,22 +76,24 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({ players, localPlayer, current
                       {(player.trustedSources ?? []).slice(0, 3).join(', ')}
                     </p>
                   )}
+                  {player.backdrop?.assetUrl && <p className="truncate">Backdrop ready</p>}
                 </div>
               )}
             </div>
             <div className="flex items-center gap-3">
-                <IndicatorLight color="green" count={player.violations.green} />
-                <IndicatorLight color="yellow" count={player.violations.yellow} />
-                <IndicatorLight color="red" count={player.violations.red} />
-                {isReferee && player.id !== localPlayer.id && (
-                  <button 
-                    onClick={() => onRemovePlayer(player.id)}
-                    className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-300"
-                    title={`Remove ${player.name} from game`}
-                  >
-                      <span className="material-symbols-outlined">person_remove</span>
-                  </button>
-                )}
+              <IndicatorLight color="green" filled={isMicLive(player) ? 1 : 0} total={1} label={player.id === currentSpeakerId ? 'Current speaker mic state' : 'Mic state'} />
+              <IndicatorLight color="yellow" filled={toCount(player.indicators?.yellowRemaining)} total={3} label="Lifeline slots remaining this round" />
+              <IndicatorLight color="red" filled={toCount(player.indicators?.redRemaining)} total={3} label="Permanent strikes remaining" />
+              <IndicatorLight color="purple" filled={toCount(player.indicators?.purpleRemaining)} total={3} label="Audience review tokens remaining" />
+              {isReferee && player.id !== localPlayer.id && (
+                <button
+                  onClick={() => onRemovePlayer(player.id)}
+                  className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-300"
+                  title={`Remove ${player.name} from game`}
+                >
+                  <span className="material-symbols-outlined">person_remove</span>
+                </button>
+              )}
             </div>
           </li>
         ))}

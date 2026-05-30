@@ -25,7 +25,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ playerName, onGameSetup, onBack }
     <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[100svh] py-8 px-4">
       <div className="text-center mb-10">
         <h1 className="text-5xl sm:text-6xl font-black font-display tracking-tight text-gray-100">Game Setup</h1>
-        <p className="text-lg sm:text-xl text-gray-400 mt-2">Welcome, {playerName}. Configure your T.A.L.K session.</p>
+        <p className="text-lg sm:text-xl text-gray-400 mt-2">Welcome, {playerName}. Configure your Tactically Analyzing Language for Knowledge session.</p>
       </div>
       <div className="w-full bg-black/30 backdrop-blur-lg border border-white/10 rounded-xl shadow-2xl p-8 space-y-6">
         <h2 className="text-2xl font-bold text-center text-gray-100 font-display">Session Settings</h2>
@@ -84,7 +84,7 @@ const GameSetup: React.FC<GameSetupProps> = ({ playerName, onGameSetup, onBack }
           disabled={!isFormValid}
           className="w-full bg-gradient-to-r from-amber-600 via-purple-600 to-amber-600 bg-[length:200%_auto] hover:bg-[position:100%_0] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black/50 focus:ring-purple-500 text-white font-bold py-3 px-4 rounded-lg text-lg transition-all duration-500 transform hover:scale-105 shadow-lg hover:shadow-purple-500/30 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
         >
-          {isFormValid ? 'Create Lobby' : 'Please enter a topic'}
+          {isFormValid ? 'Create T.A.L.K Lobby' : 'Please enter a topic'}
         </button>
          <button onClick={onBack} className="w-full text-center text-sm text-gray-500 hover:text-gray-200 transition-colors pt-2">
             Back to Main Menu

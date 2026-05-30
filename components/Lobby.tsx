@@ -21,10 +21,10 @@ const RoleSelector: React.FC<{
         <div className="mt-4 p-3 bg-black/30 rounded-lg">
             <h3 className="text-center font-bold text-gray-200 mb-2">Choose Your Role</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <button onClick={() => onSelectRole('Conversationalist')} className="text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-3 rounded-md transition-colors">Conversationalist</button>
-                <button onClick={() => onSelectRole('Referee')} disabled={takenRoles.referee} className="text-sm bg-amber-600 hover:bg-amber-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-3 rounded-md transition-colors">Referee</button>
-                <button onClick={() => onSelectRole('Time Keeper')} disabled={takenRoles.timeKeeper} className="text-sm bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-3 rounded-md transition-colors">Time Keeper</button>
-                <button onClick={() => onSelectRole(null)} className="text-sm bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-3 rounded-md transition-colors">Clear</button>
+                <button onClick={() => onSelectRole('Conversationalist')} className="min-h-12 whitespace-normal text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-3 rounded-md transition-colors">Conversationalist</button>
+                <button onClick={() => onSelectRole('Referee')} disabled={takenRoles.referee} className="min-h-12 whitespace-normal text-xs sm:text-sm bg-amber-600 hover:bg-amber-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-3 rounded-md transition-colors">Referee</button>
+                <button onClick={() => onSelectRole('Time Keeper')} disabled={takenRoles.timeKeeper} className="min-h-12 whitespace-normal text-xs sm:text-sm bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-3 rounded-md transition-colors">Time Keeper</button>
+                <button onClick={() => onSelectRole(null)} className="min-h-12 whitespace-normal text-xs sm:text-sm bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-3 rounded-md transition-colors">Clear Role</button>
             </div>
         </div>
     );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import LoginScreen from './components/LoginScreen';
 import GameScreen from './components/GameScreen';
 import GameSetup from './components/GameSetup';
@@ -6,18 +6,23 @@ import MainMenu from './components/MainMenu';
 import Lobby from './components/Lobby';
 import LobbyBrowser from './components/LobbyBrowser';
 import ViewerScreen from './components/ViewerScreen';
-import { Player, PlayerRole, Viewer, GameSettings } from './types';
+import type { BootstrapResponse, GameSettings, Player, PlayerRole, SessionSummary, UserProfile, Viewer } from './types';
 import {
-  createLobby,
-  joinLobby,
-  getLobbyState,
   addBotToLobby,
-  setPlayerRoleInLobby,
+  bootstrapProfile,
+  createLobby,
+  getLobbyState,
+  getSessionHistory,
   joinAsViewer,
-  LobbyState,
-  startGame,
+  joinLobby,
+  setPlayerRoleInLobby,
+  setRequestAuthSession,
   setRequestPlayerId,
+  startGame,
+  subscribeToLobbyStream,
+  type LobbyState,
 } from './services/mockApi';
+import type { ClientAuthSession } from './services/authService';
 import { createCorrelationId, logEvent } from './utils/logger';
 
 type AppPhase = 'LOGIN' | 'MAIN_MENU' | 'SETUP' | 'LOBBY_BROWSER' | 'LOBBY' | 'GAME' | 'VIEWER';
@@ -26,16 +31,12 @@ const ACTIVE_POLL_MS = 2500;
 const BACKGROUND_POLL_MS = 10000;
 const NOTIFICATION_TIMEOUT_MS = 5000;
 
-const createUserId = () => {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-};
-
 const App: React.FC = () => {
   const sessionCorrelationId = useMemo(() => createCorrelationId(), []);
   const [appPhase, setAppPhase] = useState<AppPhase>('LOGIN');
+  const [authSession, setAuthSession] = useState<ClientAuthSession | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [sessionHistory, setSessionHistory] = useState<SessionSummary[]>([]);
   const [localUser, setLocalUser] = useState<Player | Viewer | null>(null);
   const [lobbyState, setLobbyState] = useState<LobbyState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -61,6 +62,19 @@ const App: React.FC = () => {
     return () => window.clearTimeout(timeoutId);
   }, [notification]);
 
+  const refreshSessionHistory = useCallback(async () => {
+    if (!authSession) return;
+    try {
+      const history = await getSessionHistory();
+      setSessionHistory(history.sessions);
+    } catch (historyError) {
+      logEvent('warn', 'history.refresh.failed', {
+        correlationId: sessionCorrelationId,
+        error: historyError instanceof Error ? historyError.message : String(historyError),
+      });
+    }
+  }, [authSession, sessionCorrelationId]);
+
   const handleExitGame = useCallback((message?: string) => {
     setLobbyState(null);
     setLocalUser((currentUser) => {
@@ -69,59 +83,61 @@ const App: React.FC = () => {
       return { id, name };
     });
     setAppPhase('MAIN_MENU');
+    void refreshSessionHistory();
     if (message) {
       notify(message);
     }
-  }, [notify]);
+  }, [notify, refreshSessionHistory]);
 
-  const handleLobbyPoll = useCallback(
-    async (code: string) => {
-      try {
-        const state = await getLobbyState(code);
+  const applyLobbyState = useCallback((state: LobbyState) => {
+    setLobbyState(state);
 
-        if (!state) {
-          logEvent('warn', 'lobby.poll.missing', {
-            correlationId: sessionCorrelationId,
-            code,
-          });
-          handleExitGame('The lobby you were in is no longer available.');
-          return;
-        }
+    if (localUser) {
+      const currentPlayer = state.players.find((player) => player.id === localUser.id);
+      const currentViewer = state.viewers.find((viewer) => viewer.id === localUser.id);
 
-        setLobbyState(state);
+      if (currentPlayer) {
+        setLocalUser(currentPlayer);
+      } else if (currentViewer) {
+        setLocalUser(currentViewer);
+      }
 
-        if (localUser) {
-          const currentPlayer = state.players.find((player) => player.id === localUser.id);
-          const currentViewer = state.viewers.find((viewer) => viewer.id === localUser.id);
+      if ('role' in localUser && !currentPlayer) {
+        handleExitGame('You have been removed from the game by the Referee.');
+        return;
+      }
+    }
 
-          if (currentPlayer) {
-            setLocalUser(currentPlayer);
-          } else if (currentViewer) {
-            setLocalUser(currentViewer);
-          }
+    if (state.gameStarted && (appPhase === 'LOBBY' || appPhase === 'SETUP')) {
+      const amIPlayer = state.players.some((player) => player.id === localUser?.id);
+      const amIViewer = state.viewers.some((viewer) => viewer.id === localUser?.id);
+      if (amIPlayer) setAppPhase('GAME');
+      else if (amIViewer) setAppPhase('VIEWER');
+    }
+  }, [appPhase, handleExitGame, localUser]);
 
-          if ('role' in localUser && !currentPlayer) {
-            handleExitGame('You have been removed from the game by the Referee.');
-            return;
-          }
-        }
+  const handleLobbyPoll = useCallback(async (code: string) => {
+    try {
+      const state = await getLobbyState(code);
 
-        if (state.gameStarted && (appPhase === 'LOBBY' || appPhase === 'SETUP')) {
-          const amIPlayer = state.players.some((player) => player.id === localUser?.id);
-          const amIViewer = state.viewers.some((viewer) => viewer.id === localUser?.id);
-          if (amIPlayer) setAppPhase('GAME');
-          else if (amIViewer) setAppPhase('VIEWER');
-        }
-      } catch (pollError) {
-        logEvent('error', 'lobby.poll.error', {
+      if (!state) {
+        logEvent('warn', 'lobby.poll.missing', {
           correlationId: sessionCorrelationId,
           code,
-          error: pollError instanceof Error ? pollError.message : String(pollError),
         });
+        handleExitGame('The lobby you were in is no longer available.');
+        return;
       }
-    },
-    [appPhase, handleExitGame, localUser, sessionCorrelationId],
-  );
+
+      applyLobbyState(state);
+    } catch (pollError) {
+      logEvent('error', 'lobby.poll.error', {
+        correlationId: sessionCorrelationId,
+        code,
+        error: pollError instanceof Error ? pollError.message : String(pollError),
+      });
+    }
+  }, [applyLobbyState, handleExitGame, sessionCorrelationId]);
 
   useEffect(() => {
     if (!(appPhase === 'LOBBY' || appPhase === 'GAME' || appPhase === 'VIEWER') || !gameCode) {
@@ -129,14 +145,28 @@ const App: React.FC = () => {
     }
 
     let interval: ReturnType<typeof setInterval> | undefined;
+    let lastStreamAt = 0;
     const runPoll = () => void handleLobbyPoll(gameCode);
+    const unsubscribeStream = subscribeToLobbyStream(
+      gameCode,
+      (state) => {
+        lastStreamAt = Date.now();
+        applyLobbyState(state);
+      },
+      () => undefined,
+    );
 
     const setupPolling = () => {
       if (interval) {
         clearInterval(interval);
       }
       const pollIntervalMs = document.hidden ? BACKGROUND_POLL_MS : ACTIVE_POLL_MS;
-      interval = setInterval(runPoll, pollIntervalMs);
+      interval = setInterval(() => {
+        const streamIsStale = Date.now() - lastStreamAt > ACTIVE_POLL_MS * 2;
+        if (document.hidden || streamIsStale) {
+          runPoll();
+        }
+      }, pollIntervalMs);
     };
 
     runPoll();
@@ -149,8 +179,9 @@ const App: React.FC = () => {
       if (interval) {
         clearInterval(interval);
       }
+      unsubscribeStream();
     };
-  }, [appPhase, gameCode, handleLobbyPoll]);
+  }, [appPhase, applyLobbyState, gameCode, handleLobbyPoll]);
 
   useEffect(() => {
     if ((appPhase === 'LOBBY' || appPhase === 'GAME') && (!lobbyState || !localUser || !('role' in localUser))) {
@@ -161,14 +192,38 @@ const App: React.FC = () => {
     }
   }, [appPhase, lobbyState, localUser]);
 
-  const handleLogin = (name: string) => {
-    const user: Viewer = {
-      id: createUserId(),
-      name,
-    };
-    setLocalUser(user);
-    setAppPhase('MAIN_MENU');
+  const handleLogin = async (session: ClientAuthSession, displayName: string) => {
+    setIsLoading(true);
     setError(null);
+    try {
+      setAuthSession(session);
+      setRequestAuthSession({
+        userId: session.userId,
+        provider: session.provider,
+        displayName,
+        guestId: session.guestId,
+        getIdToken: session.getIdToken,
+      });
+      const bootstrap = await bootstrapProfile({
+        displayName,
+        authProvider: session.provider as BootstrapResponse['auth']['authProvider'],
+      });
+      setProfile(bootstrap.profile);
+      setSessionHistory(bootstrap.sessions);
+      setLocalUser({
+        id: session.userId,
+        name: bootstrap.profile.displayName || displayName,
+      });
+      setAppPhase('MAIN_MENU');
+    } catch (loginError) {
+      logEvent('error', 'auth.bootstrap.failed', {
+        correlationId: sessionCorrelationId,
+        error: loginError instanceof Error ? loginError.message : String(loginError),
+      });
+      setError('Failed to complete sign-in.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleShowSetup = () => setAppPhase('SETUP');
@@ -177,7 +232,15 @@ const App: React.FC = () => {
 
   const handleGameSetup = async (settings: GameSettings) => {
     if (!localUser) return;
-    const player: Player = { ...localUser, role: null, violations: { red: 0, yellow: 0, green: 0 } };
+    const player: Player = {
+      ...localUser,
+      role: null,
+      violations: { red: 0, yellow: 0, green: 0 },
+      authUserId: authSession?.userId,
+      authProvider: (authSession?.provider as Player['authProvider']) ?? 'guest',
+      trustedSources: profile?.rememberedTrustedSources,
+      backdrop: profile?.preferredBackdrop ?? null,
+    };
     setIsLoading(true);
     setError(null);
     try {
@@ -221,7 +284,15 @@ const App: React.FC = () => {
 
   const handleJoinLobby = async (code: string) => {
     if (!localUser) return;
-    const player: Player = { ...localUser, role: null, violations: { red: 0, yellow: 0, green: 0 } };
+    const player: Player = {
+      ...localUser,
+      role: null,
+      violations: { red: 0, yellow: 0, green: 0 },
+      authUserId: authSession?.userId,
+      authProvider: (authSession?.provider as Player['authProvider']) ?? 'guest',
+      trustedSources: profile?.rememberedTrustedSources,
+      backdrop: profile?.preferredBackdrop ?? null,
+    };
     setIsLoading(true);
     setError(null);
     try {
@@ -243,7 +314,12 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const newLobbyState = await joinAsViewer(code, localUser);
+      const newLobbyState = await joinAsViewer(code, {
+        id: localUser.id,
+        name: localUser.name,
+        authUserId: authSession?.userId,
+        authProvider: (authSession?.provider as Viewer['authProvider']) ?? 'guest',
+      });
       setLobbyState(newLobbyState);
       setLocalUser({ id: localUser.id, name: localUser.name });
       setAppPhase(newLobbyState.gameStarted ? 'VIEWER' : 'LOBBY');
@@ -284,6 +360,7 @@ const App: React.FC = () => {
         return (
           <MainMenu
             playerName={localUser.name}
+            sessionHistory={sessionHistory}
             onShowSetup={handleShowSetup}
             onShowLobbyBrowser={handleShowLobbyBrowser}
             onJoinGame={handleJoinLobby}

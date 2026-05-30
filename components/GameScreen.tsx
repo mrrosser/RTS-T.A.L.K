@@ -1,34 +1,39 @@
-import React, { useState, useEffect } from 'react';
-import { Player, TimelineEvent } from '../types';
+import React, { useEffect, useState } from 'react';
+import type { Player, PromptCard, TimelineEvent } from '../types';
 import PlayerPanel from './PlayerPanel';
 import TimelinePanel from './TimelinePanel';
-import ControlsPanel from './ControlsPanel';
+import ControlsPanel from './ControlsPanelV2';
 import ActiveTopicPanel from './ActiveTopicPanel';
+import LiveCallPanel from './LiveCallPanel';
 import { verifyFact } from '../services/geminiService';
 import { censorProfanity } from '../utils/profanityFilter';
 import { logEvent } from '../utils/logger';
-import { 
-    LobbyState,
-    addModerationNote,
-    advanceRound,
-    addTimelineEvent,
-    assignViolation,
-    awardScore,
-    endGame,
-    highlightTimelineEvent,
-    removePlayer,
-    revealQuestionFromBank,
-    reviewAudioDraft,
-    submitAudioDraft,
-    sendMessage,
-    startTurn,
-    endTurn,
-    pauseTurn,
-    updateQuestionBank,
-    updateTimelineSectionSummary,
-    updateTrustedSources,
-    useGreenIndicator,
-    useLifeline,
+import {
+  type LobbyState,
+  addModerationNote,
+  advanceRound,
+  addTimelineEvent,
+  assignViolation,
+  awardScore,
+  endGame,
+  endTurn,
+  highlightTimelineEvent,
+  removePlayer,
+  revealQuestionFromBank,
+  reviewAudioDraft,
+  requestBackdropUpload,
+  sendMessage,
+  setBackdropInLobby,
+  startTurn,
+  submitAudienceChallenge,
+  submitAudioDraft,
+  setRefereeMuteState,
+  updateMicState,
+  updatePromptCards,
+  updateTimelineSectionSummary,
+  updateTrustedSources,
+  useLifeline,
+  pauseTurn,
 } from '../services/mockApi';
 
 interface GameScreenProps {
@@ -37,11 +42,18 @@ interface GameScreenProps {
   onExit: () => void;
 }
 
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Could not read backdrop file.'));
+    reader.readAsDataURL(file);
+  });
+
 const GameScreen: React.FC<GameScreenProps> = ({ lobbyState, localPlayer, onExit }) => {
   const { code: gameCode, gameState, settings: gameSettings } = lobbyState;
   const [turnRemaining, setTurnRemaining] = useState<number>(gameState.turnRemainingSeconds ?? gameSettings.turnDuration);
 
-  // Timer rendering logic
   useEffect(() => {
     let timerInterval: ReturnType<typeof setInterval> | undefined;
 
@@ -51,20 +63,22 @@ const GameScreen: React.FC<GameScreenProps> = ({ lobbyState, localPlayer, onExit
     }
 
     if (gameState.turnStartTime) {
-        const baseRemaining = gameState.turnRemainingSeconds ?? gameSettings.turnDuration;
-        timerInterval = setInterval(() => {
-            const elapsed = (Date.now() - gameState.turnStartTime) / 1000;
-            const remaining = Math.max(0, baseRemaining - elapsed);
-            setTurnRemaining(remaining);
+      const baseRemaining = gameState.turnRemainingSeconds ?? gameSettings.turnDuration;
+      timerInterval = setInterval(() => {
+        const elapsed = (Date.now() - gameState.turnStartTime) / 1000;
+        const remaining = Math.max(0, baseRemaining - elapsed);
+        setTurnRemaining(remaining);
 
-            if (remaining === 0) {
-                clearInterval(timerInterval);
-            }
-        }, 1000);
+        if (remaining === 0) {
+          clearInterval(timerInterval);
+        }
+      }, 1000);
     }
 
     return () => clearInterval(timerInterval);
   }, [gameState.isTimerRunning, gameState.turnRemainingSeconds, gameState.turnStartTime, gameSettings.turnDuration]);
+
+  const localPlayerDetails = gameState.players.find((player) => player.id === localPlayer.id);
 
   const handleAddTimelineEvent = async (event: Omit<TimelineEvent, 'id' | 'timestamp'>) => {
     try {
@@ -84,7 +98,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ lobbyState, localPlayer, onExit
         targetPlayerId,
         type,
         reason: censorProfanity(reason),
-        assignerId: localPlayer.id
+        assignerId: localPlayer.id,
       });
     } catch (error) {
       logEvent('error', 'game.assignViolation.failed', {
@@ -95,12 +109,14 @@ const GameScreen: React.FC<GameScreenProps> = ({ lobbyState, localPlayer, onExit
       });
     }
   };
-  
-  const handleSendMessage = async (text: string) => {
+
+  const handleSendMessage = async (payload: { text: string; recipientId?: string; recipientLabel?: string }) => {
     try {
       await sendMessage(gameCode, {
-          senderId: localPlayer.id,
-          text: censorProfanity(text),
+        senderId: localPlayer.id,
+        text: censorProfanity(payload.text),
+        recipientId: payload.recipientId,
+        recipientLabel: payload.recipientLabel,
       });
     } catch (error) {
       logEvent('error', 'game.sendMessage.failed', {
@@ -123,7 +139,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ lobbyState, localPlayer, onExit
         error: error instanceof Error ? error.message : String(error),
       });
     }
-  }
+  };
 
   const handleStartTurn = async (speakerId: string) => {
     try {
@@ -138,9 +154,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ lobbyState, localPlayer, onExit
     }
   };
 
-  const handleEndTurn = async () => {
+  const handleEndTurn = async (payload: { endedBy?: string; reasonCodes?: string[] }) => {
     try {
-      await endTurn(gameCode);
+      await endTurn(gameCode, payload);
     } catch (error) {
       logEvent('error', 'game.endTurn.failed', {
         code: gameCode,
@@ -164,27 +180,25 @@ const GameScreen: React.FC<GameScreenProps> = ({ lobbyState, localPlayer, onExit
   };
 
   const handleRemovePlayer = async (playerId: string) => {
-      if (window.confirm(`Are you sure you want to remove this player from the game?`)) {
-          try {
-              await removePlayer(gameCode, playerId);
-          } catch (error) {
-              logEvent('error', 'game.removePlayer.failed', {
-                code: gameCode,
-                removerId: localPlayer.id,
-                playerId,
-                error: error instanceof Error ? error.message : String(error),
-              });
-          }
+    if (window.confirm('Are you sure you want to remove this player from the game?')) {
+      try {
+        await removePlayer(gameCode, playerId);
+      } catch (error) {
+        logEvent('error', 'game.removePlayer.failed', {
+          code: gameCode,
+          removerId: localPlayer.id,
+          playerId,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
+    }
   };
 
-  const localPlayerDetails = gameState.players.find(p => p.id === localPlayer.id);
-
-  const handleUpdateQuestionBank = async (playerId: string, questions: string[]) => {
+  const handleUpdatePromptCards = async (playerId: string, cards: PromptCard[]) => {
     try {
-      await updateQuestionBank(gameCode, playerId, questions);
+      await updatePromptCards(gameCode, playerId, cards);
     } catch (error) {
-      logEvent('error', 'game.updateQuestionBank.failed', {
+      logEvent('error', 'game.updatePromptCards.failed', {
         code: gameCode,
         playerId,
         error: error instanceof Error ? error.message : String(error),
@@ -230,13 +244,27 @@ const GameScreen: React.FC<GameScreenProps> = ({ lobbyState, localPlayer, onExit
     }
   };
 
-  const handleUseGreenIndicator = async (payload: { playerId: string; reason?: string }) => {
+  const handleUpdateMicState = async (payload: { playerId: string; micLive: boolean; videoEnabled?: boolean }) => {
     try {
-      await useGreenIndicator(gameCode, payload);
+      await updateMicState(gameCode, payload);
     } catch (error) {
-      logEvent('error', 'game.useGreenIndicator.failed', {
+      logEvent('error', 'game.updateMicState.failed', {
         code: gameCode,
         playerId: payload.playerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  const handleSetRefereeMuteState = async (payload: { refereeId: string; targetPlayerId: string; muted: boolean }) => {
+    try {
+      await setRefereeMuteState(gameCode, payload);
+    } catch (error) {
+      logEvent('error', 'game.refereeMute.failed', {
+        code: gameCode,
+        refereeId: payload.refereeId,
+        targetPlayerId: payload.targetPlayerId,
+        muted: payload.muted,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -278,13 +306,13 @@ const GameScreen: React.FC<GameScreenProps> = ({ lobbyState, localPlayer, onExit
     }
   };
 
-  const handleEndGame = async (reason?: string) => {
+  const handleEndGame = async (payload: { requestedBy?: string; reason?: string; reasonCodes?: string[] }) => {
     try {
-      await endGame(gameCode, reason);
+      await endGame(gameCode, payload);
     } catch (error) {
       logEvent('error', 'game.endGame.failed', {
         code: gameCode,
-        reason,
+        reason: payload.reason,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -339,65 +367,129 @@ const GameScreen: React.FC<GameScreenProps> = ({ lobbyState, localPlayer, onExit
     }
   };
 
+  const handleBackdropUpload = async (playerId: string, file: File) => {
+    try {
+      const upload = await requestBackdropUpload({
+        lobbyCode: gameCode,
+        playerId,
+        filename: file.name,
+        contentType: file.type || 'image/png',
+      });
+
+      if (upload.enabled && upload.uploadUrl && upload.assetUrl) {
+        await fetch(upload.uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+          },
+          body: file,
+        });
+        await setBackdropInLobby(gameCode, {
+          playerId,
+          assetUrl: upload.assetUrl,
+        });
+        return;
+      }
+
+      const fallbackDataUrl = await readFileAsDataUrl(file);
+      await setBackdropInLobby(gameCode, {
+        playerId,
+        assetUrl: fallbackDataUrl,
+      });
+    } catch (error) {
+      logEvent('error', 'game.backdropUpload.failed', {
+        code: gameCode,
+        playerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
+  const handleSubmitAudienceChallenge = async (payload: { challengerId: string; actionId: string; note?: string }) => {
+    try {
+      await submitAudienceChallenge(gameCode, payload);
+    } catch (error) {
+      logEvent('error', 'game.submitAudienceChallenge.failed', {
+        code: gameCode,
+        challengerId: payload.challengerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 flex flex-col gap-6">
-        <ActiveTopicPanel 
-            topic={gameState.activeTopic} 
-            question={gameState.activeQuestion} 
-            round={gameState.currentRound}
-            totalRounds={gameSettings.totalRounds}
-            moderationNotes={gameState.moderationNotes}
-            winner={gameState.winner}
+        <ActiveTopicPanel
+          topic={gameState.activeTopic}
+          question={gameState.activeQuestion}
+          round={gameState.currentRound}
+          totalRounds={gameSettings.totalRounds}
+          moderationNotes={gameState.moderationNotes}
+          winner={gameState.winner}
+          icebreakerQuestions={gameState.icebreakerQuestions}
+          closingQuote={gameState.closingQuote}
         />
-        <TimelinePanel 
-            timeline={gameState.timeline} 
-            players={gameState.players} 
-            isViewer={false}
-            timelineHighlights={gameState.timelineHighlights}
-            timelineSections={gameState.timelineSections}
+        <LiveCallPanel
+          gameCode={gameCode}
+          localPlayer={localPlayer}
+          players={gameState.players}
+          onPresenceChange={handleUpdateMicState}
+        />
+        <TimelinePanel
+          timeline={gameState.timeline}
+          players={gameState.players}
+          isViewer={false}
+          localUserId={localPlayer.id}
+          timelineHighlights={gameState.timelineHighlights}
+          timelineSections={gameState.timelineSections}
         />
       </div>
       <div className="flex flex-col gap-6">
-        <PlayerPanel 
-            players={gameState.players} 
-            localPlayer={localPlayer} 
-            currentSpeakerId={gameState.speakerId} 
-            onRemovePlayer={handleRemovePlayer}
+        <PlayerPanel
+          players={gameState.players}
+          localPlayer={localPlayer}
+          currentSpeakerId={gameState.speakerId}
+          onRemovePlayer={handleRemovePlayer}
         />
-        <ControlsPanel 
-            localPlayer={localPlayerDetails}
-            players={gameState.players}
-            timeline={gameState.timeline}
-            timelineSections={gameState.timelineSections || []}
-            audioDrafts={gameState.audioDrafts || []}
-            onAddEvent={handleAddTimelineEvent}
-            onFactCheck={handleFactCheck}
-            onSendMessage={handleSendMessage}
-            onAssignViolation={handleAssignViolation}
-            onStartTurn={handleStartTurn}
-            onEndTurn={handleEndTurn}
-            onPauseTurn={handlePauseTurn}
-            onUpdateQuestionBank={handleUpdateQuestionBank}
-            onRevealQuestion={handleRevealQuestion}
-            onUpdateTrustedSources={handleUpdateTrustedSources}
-            onUseLifeline={handleUseLifeline}
-            onUseGreenIndicator={handleUseGreenIndicator}
-            onAddModerationNote={handleAddModerationNote}
-            onAwardScore={handleAwardScore}
-            onAdvanceRound={handleAdvanceRound}
-            onEndGame={handleEndGame}
-            onHighlightTimelineEvent={handleHighlightTimelineEvent}
-            onUpdateSectionSummary={handleUpdateSectionSummary}
-            onSubmitAudioDraft={handleSubmitAudioDraft}
-            onReviewAudioDraft={handleReviewAudioDraft}
-            isTurnActive={gameState.isTimerRunning}
-            turnRemaining={turnRemaining}
-            currentSpeakerId={gameState.speakerId}
-            currentRound={gameState.currentRound}
-            totalRounds={gameSettings.totalRounds}
-            chatMessages={gameState.chatMessages}
-            onExit={onExit}
+        <ControlsPanel
+          localPlayer={localPlayerDetails}
+          players={gameState.players}
+          timeline={gameState.timeline}
+          timelineSections={gameState.timelineSections || []}
+          audioDrafts={gameState.audioDrafts || []}
+          audienceChallenges={gameState.audienceChallenges || []}
+          refereeActions={gameState.refereeActions || []}
+          onAddEvent={handleAddTimelineEvent}
+          onFactCheck={handleFactCheck}
+          onSendMessage={handleSendMessage}
+          onAssignViolation={handleAssignViolation}
+          onStartTurn={handleStartTurn}
+          onEndTurn={handleEndTurn}
+          onPauseTurn={handlePauseTurn}
+          onUpdatePromptCards={handleUpdatePromptCards}
+          onRevealQuestion={handleRevealQuestion}
+          onUpdateTrustedSources={handleUpdateTrustedSources}
+          onUseLifeline={handleUseLifeline}
+          onUpdateMicState={handleUpdateMicState}
+          onSetRefereeMuteState={handleSetRefereeMuteState}
+          onAddModerationNote={handleAddModerationNote}
+          onAwardScore={handleAwardScore}
+          onAdvanceRound={handleAdvanceRound}
+          onEndGame={handleEndGame}
+          onHighlightTimelineEvent={handleHighlightTimelineEvent}
+          onUpdateSectionSummary={handleUpdateSectionSummary}
+          onSubmitAudioDraft={handleSubmitAudioDraft}
+          onReviewAudioDraft={handleReviewAudioDraft}
+          onUploadBackdrop={handleBackdropUpload}
+          onSubmitAudienceChallenge={handleSubmitAudienceChallenge}
+          isTurnActive={gameState.isTimerRunning}
+          turnRemaining={turnRemaining}
+          currentSpeakerId={gameState.speakerId}
+          currentRound={gameState.currentRound}
+          totalRounds={gameSettings.totalRounds}
+          chatMessages={gameState.chatMessages}
+          onExit={onExit}
         />
       </div>
     </div>

@@ -8,9 +8,20 @@ interface ActiveTopicPanelProps {
   totalRounds: number;
   moderationNotes?: ModerationNote[];
   winner?: WinnerSummary | null;
+  icebreakerQuestions?: string[];
+  closingQuote?: string;
 }
 
-const ActiveTopicPanel: React.FC<ActiveTopicPanelProps> = ({ topic, question, round, totalRounds, moderationNotes = [], winner = null }) => {
+const ActiveTopicPanel: React.FC<ActiveTopicPanelProps> = ({
+  topic,
+  question,
+  round,
+  totalRounds,
+  moderationNotes = [],
+  winner = null,
+  icebreakerQuestions = [],
+  closingQuote,
+}) => {
   return (
     <div className="bg-black/30 backdrop-blur-lg border border-white/10 p-4 rounded-xl">
       <div className="flex justify-between items-center mb-2">
@@ -28,6 +39,18 @@ const ActiveTopicPanel: React.FC<ActiveTopicPanelProps> = ({ topic, question, ro
         <div className="mt-4 pt-4 border-t border-white/10">
             <h3 className="text-xl font-bold text-gray-200 font-display">Current Question</h3>
             <p className="text-md text-gray-400">{question}</p>
+        </div>
+      )}
+      {!question && icebreakerQuestions.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-white/10">
+          <h3 className="text-xl font-bold text-sky-200 font-display">Icebreakers</h3>
+          <ul className="mt-2 space-y-2 text-sm text-sky-100">
+            {icebreakerQuestions.slice(0, 3).map((entry) => (
+              <li key={entry} className="rounded-md bg-sky-950/30 border border-sky-700/30 px-3 py-2">
+                {entry}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {moderationNotes.length > 0 && (
@@ -53,6 +76,7 @@ const ActiveTopicPanel: React.FC<ActiveTopicPanelProps> = ({ topic, question, ro
             {winner.score}
             .
           </p>
+          {closingQuote && <p className="mt-3 text-sm italic text-emerald-100/90">{closingQuote}</p>}
         </div>
       )}
     </div>
