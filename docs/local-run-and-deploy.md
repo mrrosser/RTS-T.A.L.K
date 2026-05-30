@@ -124,9 +124,11 @@ gcloud run deploy talk-app \
   --platform managed \
   --region us-central1 \
   --allow-unauthenticated \
-  --set-env-vars TALK_STORAGE_BACKEND=firestore,FIREBASE_PROJECT_ID=leadflow-review \
-  --set-secrets GEMINI_API_KEY=mission-control-pvzaGn5TxDaf84d0st4N52nCc3T2-geminiKey:latest
+  --set-env-vars=TALK_STORAGE_BACKEND=firestore,FIREBASE_PROJECT_ID=leadflow-review \
+  --set-secrets=GEMINI_API_KEY=mission-control-pvzaGn5TxDaf84d0st4N52nCc3T2-geminiKey:latest
 ```
+
+PowerShell note: keep the `--set-env-vars=...` argument quoted or in equals form so the comma-separated values remain one gcloud argument.
 
 ### Post-deploy checks
 

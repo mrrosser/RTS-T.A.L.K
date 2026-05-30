@@ -41,8 +41,16 @@ The current client URL is served from `leadflow-review`. The `gen-lang-client-03
 - [x] Local production smoke: `/` loads the T.A.L.K title
 - [x] Local production smoke: `/api/health` returns OK
 - [x] Local production smoke: create lobby, join second player, assign conversationalist roles
-- [ ] Post-deploy live smoke: `/` returns 200
-- [ ] Post-deploy live smoke: `/api/health` confirms Firestore, Gemini, and Firebase configuration
+- [x] Post-deploy live smoke: `/` returns 200
+- [x] Post-deploy live smoke: `/api/health` confirms Firestore, Gemini, and Firebase configuration
+
+## Deployment Result
+
+- Built image: `us-central1-docker.pkg.dev/leadflow-review/cloud-run-source-deploy/talk-app:sync-20260530`
+- Image digest: `sha256:bf1167e3560003c7c622649f3b27b26812d32cdbd262157f392b096aa1f61801`
+- Active revision: `talk-app-00004-tfh`
+- Traffic: 100%
+- Verified live URL: `https://talk-app-gdyt2qma6a-uc.a.run.app/`
 
 ## Follow-Up: Dedicated GCP Project
 
