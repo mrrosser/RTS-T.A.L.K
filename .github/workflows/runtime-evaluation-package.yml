@@ -6,6 +6,7 @@ on:
       - '.agents/evaluation-observability-pin.json'
       - '.github/workflows/runtime-evaluation-package.yml'
   push:
+    branches: [main, master]
     paths:
       - '.agents/skills/evaluation-observability/**'
       - '.agents/evaluation-observability-pin.json'
@@ -35,3 +36,4 @@ jobs:
               assert hashlib.sha256((p/'skills/evaluation-observability'/name).read_bytes()).hexdigest() == expected, name
       - run: node --test .agents/skills/evaluation-observability/providers.test.mjs
       - run: python -m unittest discover -s .agents/skills/evaluation-observability -p test_measure_command.py
+      - run: node --test test/providerObservation.node-test.mjs
