@@ -15,6 +15,7 @@ RUN npm ci --omit=dev
 
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/backend ./backend
+COPY --from=build /app/.agents/skills/evaluation-observability ./.agents/skills/evaluation-observability
 
 ENV NODE_ENV=production
 ENV PORT=8080

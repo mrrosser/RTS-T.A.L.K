@@ -1,4 +1,11 @@
 import crypto from 'node:crypto';
+import { observeProvider } from '../.agents/skills/evaluation-observability/providers.mjs';
+import { logEvent } from './logger.mjs';
+
+const generateObserved = (client, payload) => observeProvider(
+  () => client.models.generateContent(payload),
+  { provider: 'gemini', project_id: 'rts-talk', onObservation: row => logEvent('info', 'model.usage', row) },
+);
 
 const fallbackIcebreakers = (topic) => [
   `In one sentence, what is your first instinct about ${topic}?`,
@@ -13,7 +20,7 @@ export const createIcebreakerService = (geminiClient) => ({
     }
 
     try {
-      const response = await geminiClient.models.generateContent({
+      const response = await generateObserved(geminiClient, {
         model: 'gemini-2.5-flash',
         contents: `Generate exactly three short icebreaker questions for a debate game audience warm-up about: "${topic}". Return one question per line without numbering.`,
       });
